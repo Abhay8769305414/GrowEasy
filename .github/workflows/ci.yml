@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ─── Install & Lint ──────────────────────────────────────────────────────────
+  install:
+    name: Install & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Lint backend
+        run: npm run lint --workspace=apps/backend || true
+
+      - name: Lint frontend
+        run: npm run lint --workspace=apps/frontend || true
+
+  # ─── Test ────────────────────────────────────────────────────────────────────
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: install
+    env:
+      NODE_ENV: test
+      GEMINI_API_KEY: ''  # Empty = deterministic fallback mode (no real key needed)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Run backend tests
+        run: npm run test --workspace=apps/backend
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: apps/backend/coverage/
+          retention-days: 7
+
+  # ─── Build ───────────────────────────────────────────────────────────────────
+  build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Build backend
+        run: npm run build --workspace=apps/backend
+
+      - name: Build frontend
+        run: npm run build --workspace=apps/frontend
+        env:
+          NODE_ENV: production
+
+      - name: Verify backend build artifact
+        run: test -f apps/backend/dist/index.js
+
+      - name: Verify frontend build artifact
+        run: test -d apps/frontend/.next

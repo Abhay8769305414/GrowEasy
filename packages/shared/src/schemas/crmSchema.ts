@@ -1,0 +1,170 @@
+import { FieldType } from '../types';
+import { CrmFieldName } from '../constants';
+
+export interface CrmFieldDefinition {
+  name: CrmFieldName;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  unique?: boolean;
+  description: string;
+  examples: string[];
+  aliases: string[];          // Common CSV column names that map here
+  normalize?: boolean;        // Whether backend normalizer handles this
+  validationRegex?: string;
+}
+
+export const CRM_SCHEMA: CrmFieldDefinition[] = [
+  {
+    name: 'name',
+    label: 'Full Name',
+    type: FieldType.STRING,
+    required: true,
+    description: 'Full name of the contact or lead',
+    examples: ['John Doe', 'Jane Smith'],
+    aliases: ['full name', 'contact name', 'customer name', 'lead name', 'person', 'name', 'first name', 'last name', 'fname', 'lname'],
+    normalize: true,
+  },
+  {
+    name: 'email',
+    label: 'Email Address',
+    type: FieldType.EMAIL,
+    required: true,
+    unique: true,
+    description: 'Primary email address',
+    examples: ['john@example.com', 'jane.smith@company.co'],
+    aliases: ['email', 'email address', 'e-mail', 'mail', 'contact email', 'business email', 'work email', 'corporate email', 'email id'],
+    normalize: true,
+    validationRegex: '^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$',
+  },
+  {
+    name: 'phone',
+    label: 'Phone Number',
+    type: FieldType.PHONE,
+    required: false,
+    description: 'Primary phone number (will be normalized to E.164)',
+    examples: ['+91 9876543210', '(555) 123-4567'],
+    aliases: ['phone', 'phone number', 'mobile', 'cell', 'telephone', 'contact number', 'mobile number', 'mobile no', 'phone no', 'contact no', 'whatsapp'],
+    normalize: true,
+  },
+  {
+    name: 'company',
+    label: 'Company',
+    type: FieldType.STRING,
+    required: false,
+    description: 'Company or organization name',
+    examples: ['Acme Corp', 'TechStart Inc'],
+    aliases: ['company', 'company name', 'organization', 'org', 'employer', 'business', 'firm', 'enterprise', 'account name', 'account'],
+    normalize: true,
+  },
+  {
+    name: 'address',
+    label: 'Address',
+    type: FieldType.STRING,
+    required: false,
+    description: 'Street address',
+    examples: ['123 Main St', '456 Oak Avenue, Suite 100'],
+    aliases: ['address', 'street', 'street address', 'addr', 'location'],
+    normalize: false,
+  },
+  {
+    name: 'city',
+    label: 'City',
+    type: FieldType.STRING,
+    required: false,
+    description: 'City name',
+    examples: ['Mumbai', 'New York'],
+    aliases: ['city', 'town', 'municipality'],
+    normalize: true,
+  },
+  {
+    name: 'state',
+    label: 'State / Province',
+    type: FieldType.STRING,
+    required: false,
+    description: 'State or province',
+    examples: ['Maharashtra', 'California', 'CA'],
+    aliases: ['state', 'province', 'region', 'state/province'],
+    normalize: true,
+  },
+  {
+    name: 'country',
+    label: 'Country',
+    type: FieldType.STRING,
+    required: false,
+    description: 'Country name or ISO code',
+    examples: ['India', 'United States', 'US', 'IN'],
+    aliases: ['country', 'nation', 'country code', 'country name', 'location country', 'geo'],
+    normalize: true,
+  },
+  {
+    name: 'tags',
+    label: 'Tags',
+    type: FieldType.STRING,
+    required: false,
+    description: 'Comma-separated tags or labels',
+    examples: ['vip, enterprise', 'startup'],
+    aliases: ['tags', 'labels', 'categories', 'segments'],
+    normalize: false,
+  },
+  {
+    name: 'notes',
+    label: 'Notes',
+    type: FieldType.STRING,
+    required: false,
+    description: 'Free-form notes about the contact',
+    examples: ['Met at conference', 'Interested in plan B'],
+    aliases: ['notes', 'comments', 'description', 'remarks', 'memo'],
+    normalize: false,
+  },
+  {
+    name: 'lead_source',
+    label: 'Lead Source',
+    type: FieldType.ENUM,
+    required: false,
+    description: 'Source of the lead',
+    examples: ['Website', 'Referral', 'LinkedIn'],
+    aliases: ['lead source', 'source', 'acquisition source', 'channel', 'campaign source'],
+    normalize: true,
+  },
+  {
+    name: 'status',
+    label: 'Status',
+    type: FieldType.ENUM,
+    required: false,
+    description: 'Current status in the CRM pipeline',
+    examples: ['New', 'Contacted', 'Qualified', 'Lost'],
+    aliases: ['status', 'lead status', 'stage', 'pipeline stage', 'deal stage'],
+    normalize: true,
+  },
+  {
+    name: 'owner',
+    label: 'Owner / Assigned To',
+    type: FieldType.STRING,
+    required: false,
+    description: 'The CRM user who owns this record',
+    examples: ['john.smith@company.com', 'Jane Doe'],
+    aliases: ['owner', 'assigned to', 'assignee', 'lead owner', 'rep', 'sales rep'],
+    normalize: true,
+  },
+  {
+    name: 'website',
+    label: 'Website',
+    type: FieldType.URL,
+    required: false,
+    description: 'Company or personal website URL',
+    examples: ['https://example.com', 'www.company.io'],
+    aliases: ['website', 'url', 'web', 'homepage', 'site'],
+    normalize: true,
+  },
+  {
+    name: 'created_at',
+    label: 'Created Date',
+    type: FieldType.DATE,
+    required: false,
+    description: 'Date the record was created (will be normalized to ISO 8601)',
+    examples: ['2024-01-15', '15/01/2024', 'Jan 15, 2024'],
+    aliases: ['created at', 'date', 'creation date', 'date added', 'signup date', 'created', 'date created', 'created date', 'import date', 'record date'],
+    normalize: true,
+  },
+];
