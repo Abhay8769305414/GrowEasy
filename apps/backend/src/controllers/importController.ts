@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import { JobStatus, ConfidenceLevel } from '@groweasy/shared';
+import path from 'path';
+import { JobStatus, ConfidenceLevel, StartImportRequestSchema } from '@groweasy/shared';
 import { jobRepository } from '../services/job/JobRepository';
 import { parseCsvBuffer } from '../services/parser/csvParser';
 import { suggestFieldMappings } from '../services/ai/FieldMappingAgent';
@@ -24,10 +25,11 @@ export async function previewImport(
     return;
   }
 
+  const sanitizedFileName = path.basename(file.originalname).replace(/[<>:"\/\\|?*]/g, '_');
   const jobId = randomUUID();
   const now = Date.now();
   const requestId = (req as Request & { id?: string }).id ?? jobId;
-  const log = logger.child({ jobId, requestId, file: file.originalname });
+  const log = logger.child({ jobId, requestId, file: sanitizedFileName });
 
   log.info(
     { size: file.size, mimetype: file.mimetype },
@@ -38,7 +40,7 @@ export async function previewImport(
     await jobRepository.create({
       id: jobId,
       status: JobStatus.PARSING,
-      fileName: file.originalname,
+      fileName: sanitizedFileName,
       totalRows: 0,
       processedRows: 0,
       fieldMappings: {},
@@ -59,7 +61,7 @@ export async function previewImport(
 
     const parsed = await parseCsvBuffer({
       fileBuffer: file.buffer,
-      originalName: file.originalname,
+      originalName: sanitizedFileName,
       jobId,
     });
 
@@ -114,7 +116,7 @@ export async function previewImport(
       totalRows: parsed.totalRows,
       skippedRows: parsed.skippedRows,
       fileSize: file.size,
-      fileName: file.originalname,
+      fileName: sanitizedFileName,
       delimiter: parsed.delimiter,
       suggestedMappings: initialMappings,
     });
@@ -135,14 +137,13 @@ export async function startImport(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { jobId, fieldMappings } = req.body as {
-      jobId: string;
-      fieldMappings: Array<{ csvColumn: string; crmField: string | null }>;
-    };
-
-    if (!jobId) {
-      throw createError('jobId is required', 400, 'MISSING_JOB_ID');
+    const parsed = StartImportRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const errorMsg = parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      throw createError(`Invalid request payload: ${errorMsg}`, 400, 'VALIDATION_ERROR');
     }
+
+    const { jobId, fieldMappings } = parsed.data;
 
     const job = await jobRepository.findById(jobId);
     if (!job) {

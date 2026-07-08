@@ -5,7 +5,7 @@ import { jobRepository } from '../services/job/JobRepository';
 import { JobStatus } from '@groweasy/shared';
 
 describe('Jobs Route Endpoints', () => {
-  const jobId = 'test-route-job-123';
+  const jobId = '2b73bc0c-ff67-4e36-8a79-084dfbb7159c';
 
   beforeEach(async () => {
     // Seed a job in the repository for testing
@@ -57,7 +57,7 @@ describe('Jobs Route Endpoints', () => {
 
   it('GET /api/jobs/:id returns 404 for unknown job', async () => {
     await request(app)
-      .get('/api/jobs/unknown-id')
+      .get('/api/jobs/f47ac10b-58cc-4372-a567-0e02b2c3d479')
       .expect(404);
   });
 
@@ -103,5 +103,11 @@ describe('Jobs Route Endpoints', () => {
     // Verify it is gone
     const job = await jobRepository.findById(jobId);
     expect(job).toBeNull();
+  });
+
+  it('GET /api/jobs/:id returns 400 for invalid UUID format', async () => {
+    await request(app)
+      .get('/api/jobs/invalid-uuid-123')
+      .expect(400);
   });
 });

@@ -29,15 +29,16 @@ export function validateCrmRecord(
   const errors: RowError[] = [];
   const warnings: RowWarning[] = [];
   let status: 'success' | 'failed' | 'skipped' = 'success';
-  let skipReason: string | undefined;
-
   // 1. Skip only rows that have neither email nor phone
   const hasEmail = record.email !== undefined && record.email !== null && record.email.trim() !== '';
   const hasPhone = record.phone !== undefined && record.phone !== null && record.phone.trim() !== '';
 
   if (!hasEmail && !hasPhone) {
     status = 'skipped';
-    skipReason = 'Record has neither email nor phone';
+    warnings.push({
+      field: 'row',
+      message: 'Record skipped because it has neither email nor phone',
+    });
   } else {
     // 2. Validate required fields
     for (const field of CRM_SCHEMA) {

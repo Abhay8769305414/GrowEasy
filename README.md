@@ -305,7 +305,17 @@ GrowEasy auto-detects and handles:
 | International phones | `+91 98765 43210`, `(415) 555-0101` |
 | Country names | `India`, `United Kingdom`, `UAE` → ISO codes |
 
----
+## 🤝 Contributing
+
+We welcome contributions to GrowEasy! To contribute:
+
+1. **Fork** the repository.
+2. **Create a branch** for your feature or bug fix (`git checkout -b feature/amazing-feature`).
+3. **Commit your changes** (`git commit -m 'Add amazing feature'`).
+4. **Push to the branch** (`git push origin feature/amazing-feature`).
+5. **Open a Pull Request**.
+
+Please ensure that your code builds correctly (`npm run build`), passes linter rules (`npm run lint`), and passes the test suite (`npm run test`) before opening a PR.
 
 ## 📄 License
 

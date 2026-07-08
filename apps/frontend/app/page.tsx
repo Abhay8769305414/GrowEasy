@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, Zap, Shield, BarChart3 } from 'lucide-react';
+import { Upload, Zap, Shield, BarChart3 } from 'lucide-react';
 import { useUpload } from '@/hooks/useUpload';
 
 const FEATURES = [

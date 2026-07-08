@@ -37,6 +37,20 @@ export async function getJobStatus(req: Request, res: Response, next: NextFuncti
 import { jobEvents } from '../services/job/orchestrator';
 
 /**
+ * Middleware to validate that the request path parameter 'id' is a valid UUID format.
+ * Returns a 400 Bad Request directly if the format is invalid.
+ */
+export function validateJobIdParam(req: Request, _res: Response, next: NextFunction): void {
+  const id = req.params.id as string;
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!id || !UUID_REGEX.test(id)) {
+    next(createError('Invalid job ID format. Expected a standard UUID.', 400, 'VALIDATION_ERROR'));
+    return;
+  }
+  next();
+}
+
+/**
  * GET /api/jobs/:id/events
  * SSE stream — emits progress, done, error events.
  */
@@ -82,14 +96,26 @@ export async function streamJobEvents(req: Request, res: Response, next: NextFun
       return;
     }
 
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      clearInterval(heartbeat);
+      jobEvents.off(`progress:${id}`, onProgress);
+      jobEvents.off(`done:${id}`, onDone);
+      jobEvents.off(`error:${id}`, onError);
+    };
+
     // Subscribe to orchestrator event emitter
     const onProgress = (data: unknown) => send('progress', data);
     const onDone = (data: unknown) => {
       send('done', data);
+      cleanup();
       res.end();
     };
     const onError = (data: { error: string }) => {
       send('error', data);
+      cleanup();
       res.end();
     };
 
@@ -103,10 +129,7 @@ export async function streamJobEvents(req: Request, res: Response, next: NextFun
     }, 15_000);
 
     req.on('close', () => {
-      clearInterval(heartbeat);
-      jobEvents.off(`progress:${id}`, onProgress);
-      jobEvents.off(`done:${id}`, onDone);
-      jobEvents.off(`error:${id}`, onError);
+      cleanup();
       logger.debug({ jobId: id }, 'SSE client disconnected');
     });
   } catch (error) {

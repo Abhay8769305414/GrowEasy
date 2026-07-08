@@ -12,9 +12,15 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
   res.on('finish', () => {
     const durationMs = Date.now() - start;
+    const reqExt = req as Request & { jobId?: string; batchId?: string };
+    const jobId = reqExt.jobId ?? req.params?.id ?? req.body?.jobId;
+    const batchId = reqExt.batchId;
+
     logger.info(
       {
         requestId,
+        ...(jobId ? { jobId } : {}),
+        ...(batchId ? { batchId } : {}),
         method: req.method,
         path: req.path,
         statusCode: res.statusCode,

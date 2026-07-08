@@ -45,7 +45,7 @@ export type FieldMappingAgentOutput = z.infer<typeof FieldMappingAgentOutputSche
  */
 export function runDeterministicFieldMappingFallback(
   csvHeaders: string[],
-  sampleRows: Record<string, string>[]
+  _sampleRows: Record<string, string>[]
 ): FieldMappingAgentOutput {
   logger.info('[FieldMappingAgent] Running deterministic alias-matching fallback.');
   const startTime = Date.now();

@@ -29,6 +29,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+export interface FieldMapping {
+  csvColumn: string;
+  crmField: string | null;
+  confidence: FieldConfidence;
+}
+
 export interface PreviewResponse {
   jobId: string;
   headers: string[];
@@ -36,7 +42,7 @@ export interface PreviewResponse {
   totalRows: number;
   fileSize: number;
   fileName: string;
-  suggestedMappings?: Record<string, any>;
+  suggestedMappings?: Record<string, FieldMapping>;
 }
 
 export interface FieldMappingInput {
@@ -60,7 +66,7 @@ export interface JobStatusResponse {
   fileName?: string;
   headers?: string[];
   preview?: Record<string, string>[];
-  fieldMappings?: Record<string, any>;
+  fieldMappings?: Record<string, FieldMapping>;
 }
 
 export interface FieldConfidence {

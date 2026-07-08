@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { extractCrmRecords, runDeterministicExtractionFallback } from './CRMExtractionAgent';
-import { isGeminiActive } from './GeminiClient';
+
 
 vi.mock('./GeminiClient', async (importOriginal) => {
   const actual = await importOriginal<any>();

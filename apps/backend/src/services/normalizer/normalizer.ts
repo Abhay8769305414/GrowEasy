@@ -146,7 +146,7 @@ export function normalizeDate(raw: string): string {
   // 2. Check DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (dmyMatch) {
-    const [_, day, month, year] = dmyMatch;
+    const [, day, month, year] = dmyMatch;
     const formattedMonth = month.padStart(2, '0');
     const formattedDay = day.padStart(2, '0');
     return `${year}-${formattedMonth}-${formattedDay}`;
@@ -155,7 +155,7 @@ export function normalizeDate(raw: string): string {
   // 3. Check Alpha-month date representations (e.g. 15-Jan-2024, 15 Jan 2024, Jan 15, 2024)
   const alphaMatch = trimmed.match(/^(\d{1,2})[\-\s]([a-zA-Z]+)[\-\s](\d{4})$/);
   if (alphaMatch) {
-    const [_, day, monthStr, year] = alphaMatch;
+    const [, day, monthStr, year] = alphaMatch;
     const monthKey = monthStr.substring(0, 3).toLowerCase();
     const month = MONTHS_MAP[monthKey];
     if (month) {
@@ -167,7 +167,7 @@ export function normalizeDate(raw: string): string {
   // Jan 15, 2024 style
   const monthDayYearMatch = trimmed.match(/^([a-zA-Z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
   if (monthDayYearMatch) {
-    const [_, monthStr, day, year] = monthDayYearMatch;
+    const [, monthStr, day, year] = monthDayYearMatch;
     const monthKey = monthStr.substring(0, 3).toLowerCase();
     const month = MONTHS_MAP[monthKey];
     if (month) {

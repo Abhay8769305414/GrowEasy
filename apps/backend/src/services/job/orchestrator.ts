@@ -6,7 +6,6 @@ import {
   FieldMappingMap, 
   ProcessingSummary,
   JobMetrics,
-  Job,
   BatchInfo
 } from '@groweasy/shared';
 import { logger } from '../logger';
@@ -95,7 +94,7 @@ export class JobOrchestrator {
     jobId: string,
     rawRows: Record<string, string>[],
     fieldMappings: FieldMappingMap,
-    delimiter: string
+    _delimiter: string
   ): Promise<void> {
     const startTime = Date.now();
     logger.info({ jobId, totalRows: rawRows.length }, '[JobOrchestrator] Pipeline started');

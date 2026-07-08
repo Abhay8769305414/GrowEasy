@@ -6,10 +6,14 @@ import {
   deleteJob,
   downloadJobJson,
   downloadJobCsv,
+  validateJobIdParam,
 } from '../controllers/jobController';
 import { downloadRateLimit } from '../middleware/rateLimit';
 
 const router = Router();
+
+// Apply validateJobIdParam middleware globally for all routes matching /:id
+router.param('id', validateJobIdParam);
 
 /**
  * GET /api/jobs/:id
