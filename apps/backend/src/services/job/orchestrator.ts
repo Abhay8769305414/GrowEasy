@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import path from 'path';
 import { 
   JobStatus, 
   BatchStatus, 
@@ -12,7 +11,6 @@ import {
 } from '@groweasy/shared';
 import { logger } from '../logger';
 import { jobRepository } from './JobRepository';
-import { readAllCsvRows } from '../parser/csvParser';
 import { extractCrmRecords } from '../ai/CRMExtractionAgent';
 import { normalizeCrmRecord } from '../normalizer/normalizer';
 import { validateCrmRecord } from '../validator/validator';
@@ -61,7 +59,7 @@ export class JobOrchestrator {
    */
   async startJob(
     jobId: string,
-    filePath: string,
+    rawRows: Record<string, string>[],
     fieldMappings: FieldMappingMap,
     delimiter = ','
   ): Promise<void> {
@@ -87,7 +85,7 @@ export class JobOrchestrator {
     });
 
     // Start background processing
-    this.runPipeline(jobId, filePath, fieldMappings, delimiter).catch((err) => {
+    this.runPipeline(jobId, rawRows, fieldMappings, delimiter).catch((err) => {
       logger.error({ jobId, err: err.message }, '[JobOrchestrator] Fatal error in processing pipeline');
       jobEvents.emit(`error:${jobId}`, { error: err.message });
     });
@@ -95,24 +93,14 @@ export class JobOrchestrator {
 
   private async runPipeline(
     jobId: string,
-    filePath: string,
+    rawRows: Record<string, string>[],
     fieldMappings: FieldMappingMap,
     delimiter: string
   ): Promise<void> {
     const startTime = Date.now();
-    logger.info({ jobId, filePath }, '[JobOrchestrator] Pipeline started');
+    logger.info({ jobId, totalRows: rawRows.length }, '[JobOrchestrator] Pipeline started');
 
-    // 1. Read all rows from the file using the streaming line-filter parser
-    let rawRows: Record<string, string>[] = [];
-    try {
-      rawRows = await readAllCsvRows(filePath, delimiter);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to parse CSV file';
-      await jobRepository.update(jobId, { status: JobStatus.FAILED });
-      jobEvents.emit(`error:${jobId}`, { error: errorMsg });
-      return;
-    }
-
+    
     const totalRows = rawRows.length;
     if (totalRows === 0) {
       await jobRepository.update(jobId, {

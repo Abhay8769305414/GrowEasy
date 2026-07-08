@@ -144,7 +144,7 @@ export interface Job {
   headers?: string[];
   previewRows?: Record<string, string>[];
   records?: CrmRecord[];
-  filePath?: string;
+  parsedRows?: CsvRow[];
   delimiter?: string;
 }
 

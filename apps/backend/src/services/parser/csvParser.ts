@@ -1,11 +1,7 @@
-import fs from 'fs';
-import path from 'path';
 import { parse } from 'fast-csv';
-import { Transform, TransformCallback } from 'stream';
+import { Readable, Transform, TransformCallback } from 'stream';
 import { logger } from '../logger';
 import { config } from '../../config';
-
-// ─── Transformer to filter empty/delimiter-only lines ───────────────────────
 
 export class CsvLineFilter extends Transform {
   private buffer = '';
@@ -16,16 +12,14 @@ export class CsvLineFilter extends Transform {
     super({ objectMode: false });
   }
 
-  _transform(chunk: any, encoding: BufferEncoding, callback: TransformCallback) {
-    const data = this.buffer + chunk.toString('utf-8');
+  _transform(chunk: unknown, _encoding: BufferEncoding, callback: TransformCallback) {
+    const data = this.buffer + Buffer.from(chunk as Buffer).toString('utf-8');
     const lines = data.split(/\r?\n/);
-    
-    // Keep the last partial line in the buffer
+
     this.buffer = lines.pop() ?? '';
 
     for (const line of lines) {
       if (this.isFirstLine) {
-        // Headers line is always pushed (unless entirely empty)
         if (line.trim() === '') {
           this.skippedRows++;
         } else {
@@ -36,16 +30,15 @@ export class CsvLineFilter extends Transform {
       }
 
       const trimmed = line.trim();
-      // Replace candidate delimiters: comma, semicolon, tab, pipe
       const sanitized = trimmed.replace(/[,;\t|]/g, '').trim();
-      const isContentEmpty = sanitized === '';
 
-      if (isContentEmpty) {
+      if (sanitized === '') {
         this.skippedRows++;
       } else {
         this.push(line + '\r\n');
       }
     }
+
     callback();
   }
 
@@ -61,24 +54,23 @@ export class CsvLineFilter extends Transform {
       } else {
         const trimmed = lastLine.trim();
         const sanitized = trimmed.replace(/[,;\t|]/g, '').trim();
-        const isContentEmpty = sanitized === '';
 
-        if (isContentEmpty) {
+        if (sanitized === '') {
           this.skippedRows++;
         } else {
           this.push(lastLine + '\r\n');
         }
       }
     }
+
     callback();
   }
 }
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
 export interface ParsedCsv {
   headers: string[];
   preview: Record<string, string>[];
+  rows: Record<string, string>[];
   totalRows: number;
   skippedRows: number;
   delimiter: string;
@@ -87,17 +79,11 @@ export interface ParsedCsv {
 
 export interface ParseOptions {
   previewLimit?: number;
-  filePath: string;
+  fileBuffer: Buffer;
   originalName: string;
   jobId: string;
 }
 
-// ─── Delimiter Detection ────────────────────────────────────────────────────────
-
-/**
- * Peek at the first line of the file to detect the most likely delimiter.
- * Checks for comma, semicolon, tab, and pipe.
- */
 export function detectDelimiter(firstLine: string): string {
   const candidates: Array<{ char: string; count: number }> = [
     { char: ',', count: (firstLine.match(/,/g) ?? []).length },
@@ -107,93 +93,52 @@ export function detectDelimiter(firstLine: string): string {
   ];
 
   const winner = candidates.reduce((a, b) => (a.count >= b.count ? a : b));
-
-  // Fall back to comma if nothing strong detected
   return winner.count > 0 ? winner.char : ',';
 }
 
-/**
- * Read the first line of a file synchronously for delimiter detection.
- */
-function readFirstLine(filePath: string): string {
-  const CHUNK_SIZE = 4096;
-  const fd = fs.openSync(filePath, 'r');
-  const buffer = Buffer.alloc(CHUNK_SIZE);
-  const bytesRead = fs.readSync(fd, buffer, 0, CHUNK_SIZE, 0);
-  fs.closeSync(fd);
-
-  const content = buffer.slice(0, bytesRead).toString('utf-8');
-
-  // Strip UTF-8 BOM if present
+function readFirstLineFromBuffer(fileBuffer: Buffer): string {
+  const content = fileBuffer.subarray(0, 4096).toString('utf-8');
   const stripped = content.startsWith('\uFEFF') ? content.slice(1) : content;
-
   return stripped.split('\n')[0] ?? '';
 }
 
-// ─── BOM Strip ─────────────────────────────────────────────────────────────────
-
-/**
- * Strip a UTF-8 BOM from a string (applied to the first header key).
- */
 function stripBom(value: string): string {
   return value.startsWith('\uFEFF') ? value.slice(1) : value;
 }
 
-/**
- * Clean a header key: strip BOM, trim whitespace, normalize internal whitespace.
- */
 function cleanHeader(key: string): string {
   return stripBom(key).trim().replace(/\s+/g, ' ');
 }
 
-// ─── Main Parser ─────────────────────────────────────────────────────────────
+function createUploadStream(fileBuffer: Buffer): Readable {
+  return Readable.from([fileBuffer]);
+}
 
-/**
- * Parse a CSV file in streaming mode using fast-csv.
- * Never loads the entire file into memory.
- *
- * Handles:
- *   - UTF-8 + BOM
- *   - Auto-detected delimiter (comma, semicolon, tab, pipe)
- *   - Quoted values containing commas and newlines
- *   - Empty / all-whitespace rows (ignored)
- *   - Leading/trailing whitespace in values
- *
- * Returns headers, first N preview rows, and total row count.
- */
-export async function parseCsvFile(options: ParseOptions): Promise<ParsedCsv> {
-  const { filePath, originalName, jobId, previewLimit = config.previewRowLimit } = options;
+export async function parseCsvBuffer(options: ParseOptions): Promise<ParsedCsv> {
+  const { fileBuffer, originalName, jobId, previewLimit = config.previewRowLimit } = options;
+  const log = logger.child({ jobId, requestId: jobId, file: originalName });
 
-  const requestId = jobId;
-  const log = logger.child({ jobId, requestId, file: originalName });
+  log.info({ sizeBytes: fileBuffer.byteLength }, '[CSV Parser] Stage 1: Upload buffer received');
 
-  // ── Stage 1: File stat ────────────────────────────────────────────────────
-  const stat = fs.statSync(filePath);
-  log.info({ filePath, sizeBytes: stat.size }, '[CSV Parser] Stage 1: File stat');
-
-  if (stat.size === 0) {
+  if (fileBuffer.byteLength === 0) {
     throw new Error('Uploaded file is empty');
   }
 
-  // ── Stage 2: Delimiter detection ─────────────────────────────────────────
-  const firstLine = readFirstLine(filePath);
+  const firstLine = readFirstLineFromBuffer(fileBuffer);
   const delimiter = detectDelimiter(firstLine);
   log.info({ delimiter, firstLine: firstLine.slice(0, 120) }, '[CSV Parser] Stage 2: Delimiter detected');
 
-  // ── Stage 3: Parse ────────────────────────────────────────────────────────
   return new Promise<ParsedCsv>((resolve, reject) => {
     const preview: Record<string, string>[] = [];
+    const rows: Record<string, string>[] = [];
     let headers: string[] = [];
     let totalRows = 0;
-    let skippedRows = 0;
     let headersLogged = false;
 
-    const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+    const fileStream = createUploadStream(fileBuffer);
     const filter = new CsvLineFilter();
-
     const parser = parse({
       headers: (rawHeaders) => {
-        // Clean every header: strip BOM, trim whitespace
         const cleaned = rawHeaders.map((h) => cleanHeader(h ?? ''));
         headers = cleaned;
 
@@ -204,12 +149,11 @@ export async function parseCsvFile(options: ParseOptions): Promise<ParsedCsv> {
       trim: true,
       delimiter,
       encoding: 'utf8',
-      // fast-csv uses BOM option to handle UTF-8 BOM
     });
 
     fileStream.on('error', (err) => {
-      log.error({ err: err.message }, '[CSV Parser] File stream error');
-      reject(new Error(`File read error: ${err.message}`));
+      log.error({ err: err.message }, '[CSV Parser] Upload buffer stream error');
+      reject(new Error(`Buffer stream error: ${err.message}`));
     });
 
     filter.on('error', (err) => {
@@ -225,16 +169,13 @@ export async function parseCsvFile(options: ParseOptions): Promise<ParsedCsv> {
     parser.on('data', (row: Record<string, string>) => {
       totalRows++;
 
-      // Log first 3 rows in detail, then every 1000th row
-      if (!headersLogged || totalRows <= 3 || totalRows % 1000 === 0) {
-        log.info(
-          { rowNumber: totalRows, row },
-          `[CSV Parser] Stage 4: Row ${totalRows} parsed`
-        );
+      if (!headersLogged) {
+        log.info({ firstDataRow: totalRows }, '[CSV Parser] Stage 4: First data row parsed');
         headersLogged = true;
       }
 
-      // Collect preview rows
+      rows.push(row);
+
       if (preview.length < previewLimit) {
         preview.push(row);
       }
@@ -250,12 +191,13 @@ export async function parseCsvFile(options: ParseOptions): Promise<ParsedCsv> {
           headers,
           rawRowCount: rowCount,
         },
-        `[CSV Parser] Stage 5: Parsing complete — ${totalRows} valid rows, ${skippedRows} skipped`
+        `[CSV Parser] Stage 5: Parsing complete - ${totalRows} valid rows, ${skippedRows} skipped`
       );
 
       resolve({
         headers,
         preview,
+        rows,
         totalRows,
         skippedRows,
         delimiter,
@@ -267,16 +209,13 @@ export async function parseCsvFile(options: ParseOptions): Promise<ParsedCsv> {
   });
 }
 
-/**
- * Stream-reads all rows from a CSV file into memory for orchestrator batching.
- */
-export async function readAllCsvRows(
-  filePath: string,
+export async function readAllCsvRowsFromBuffer(
+  fileBuffer: Buffer,
   delimiter: string
 ): Promise<Record<string, string>[]> {
   return new Promise((resolve, reject) => {
     const rows: Record<string, string>[] = [];
-    const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+    const fileStream = createUploadStream(fileBuffer);
     const filter = new CsvLineFilter();
     const parser = parse({
       headers: (rawHeaders) => rawHeaders.map((h) => cleanHeader(h ?? '')),
@@ -286,7 +225,7 @@ export async function readAllCsvRows(
       encoding: 'utf8',
     });
 
-    fileStream.on('error', (err) => reject(new Error(`File read error: ${err.message}`)));
+    fileStream.on('error', (err) => reject(new Error(`Buffer stream error: ${err.message}`)));
     filter.on('error', (err) => reject(new Error(`Line filter error: ${err.message}`)));
     parser.on('error', (err) => reject(new Error(`CSV parse error: ${err.message}`)));
 

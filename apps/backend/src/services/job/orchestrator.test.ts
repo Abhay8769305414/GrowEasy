@@ -1,20 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
 import { jobOrchestrator, callWithRetry, jobEvents } from './orchestrator';
 import { jobRepository } from './JobRepository';
-import { JobStatus, BatchStatus, ConfidenceLevel } from '@groweasy/shared';
+import { JobStatus, ConfidenceLevel } from '@groweasy/shared';
 
 // Mock extraction agent
 vi.mock('../ai/CRMExtractionAgent', () => ({
-  extractCrmRecords: vi.fn(async ({ rows, batchId }) => {
+  extractCrmRecords: vi.fn(async ({ rows }: { rows: Record<string, string>[]; batchId: string }) => {
     return {
-      results: rows.map((r: any, idx: number) => ({
+      results: rows.map((r, idx: number) => ({
         rowIndex: idx,
         extracted: {
-          name: r.Name || '',
-          email: r.Email || '',
+          name: r['Name'] || '',
+          email: r['Email'] || '',
         },
         skipped: false,
       })),
@@ -28,16 +25,19 @@ vi.mock('../ai/CRMExtractionAgent', () => ({
   }),
 }));
 
-describe('JobOrchestrator', () => {
-  let tempCsvFile: string;
+// Pre-built rows so the test does not depend on disk or file paths
+function buildTestRows(count: number): Record<string, string>[] {
+  return Array.from({ length: count }, (_, i) => ({
+    Name: `Rahul ${i + 1}`,
+    Email: `rahul${i + 1}@example.com`,
+    Phone: '+919876543210',
+    Country: 'India',
+  }));
+}
 
+describe('JobOrchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Create a temporary CSV with 30 rows of contacts
-    const headers = 'Name,Email,Phone,Country\n';
-    const lines = Array.from({ length: 30 }, (_, i) => `Rahul ${i + 1},rahul${i + 1}@example.com,+919876543210,India`).join('\n');
-    tempCsvFile = path.join(os.tmpdir(), `orchestrator-test-${Date.now()}.csv`);
-    fs.writeFileSync(tempCsvFile, headers + lines, 'utf-8');
   });
 
   describe('callWithRetry', () => {
@@ -105,8 +105,8 @@ describe('JobOrchestrator', () => {
       });
 
       // Setup listeners for SSE broadcasts
-      const progressPayloads: any[] = [];
-      let donePayload: any = null;
+      const progressPayloads: unknown[] = [];
+      let donePayload: unknown = null;
 
       jobEvents.on(`progress:${jobId}`, (payload) => {
         progressPayloads.push(payload);
@@ -119,22 +119,25 @@ describe('JobOrchestrator', () => {
         });
       });
 
+      // Pre-parsed rows (30 contacts) — no disk or file path required
+      const rawRows = buildTestRows(30);
+
       // Start the job (processes in background)
-      await jobOrchestrator.startJob(jobId, tempCsvFile, fieldMappings, ',');
+      await jobOrchestrator.startJob(jobId, rawRows, fieldMappings, ',');
 
       // Wait for done event to fire
       await donePromise;
 
       // Verify progress events (30 rows batched: 25 in batch 1, 5 in batch 2)
       expect(progressPayloads).toHaveLength(2);
-      expect(progressPayloads[0]).toEqual({
+      expect((progressPayloads[0] as any)).toMatchObject({
         processed: 25,
         total: 30,
         batchId: `${jobId}-batch-1`,
         batchIndex: 0,
         totalBatches: 2,
       });
-      expect(progressPayloads[1]).toEqual({
+      expect((progressPayloads[1] as any)).toMatchObject({
         processed: 30,
         total: 30,
         batchId: `${jobId}-batch-2`,
@@ -144,21 +147,19 @@ describe('JobOrchestrator', () => {
 
       // Verify done event payload
       expect(donePayload).toBeDefined();
-      expect(donePayload.summary.success).toBe(30);
+      expect((donePayload as any).summary.success).toBe(30);
 
-      // Verify stored job status and records in database
+      // Verify stored job status and records
       const finalJob = await jobRepository.findById(jobId);
       expect(finalJob).toBeDefined();
       expect(finalJob!.status).toBe(JobStatus.DONE);
       expect(finalJob!.processedRows).toBe(30);
       expect(finalJob!.records).toHaveLength(30);
-      
+
       const firstRecord = finalJob!.records![0];
       expect(firstRecord.status).toBe('success');
       expect(firstRecord.data.name).toBe('Rahul 1');
       expect(firstRecord.data.email).toBe('rahul1@example.com');
-      
-      fs.unlinkSync(tempCsvFile);
     });
   });
 });

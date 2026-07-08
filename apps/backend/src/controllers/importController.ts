@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import fs from 'fs';
 import { JobStatus, ConfidenceLevel } from '@groweasy/shared';
 import { jobRepository } from '../services/job/JobRepository';
-import { parseCsvFile } from '../services/parser/csvParser';
+import { parseCsvBuffer } from '../services/parser/csvParser';
 import { suggestFieldMappings } from '../services/ai/FieldMappingAgent';
 import { jobOrchestrator } from '../services/job/orchestrator';
 import { createError } from '../middleware/errorHandler';
@@ -11,7 +10,7 @@ import { logger } from '../services/logger';
 
 /**
  * POST /api/import/preview
- * Upload a CSV file → stream-parse it → return real headers, preview rows, total count.
+ * Upload a CSV file, parse the in-memory upload buffer, and return preview data.
  */
 export async function previewImport(
   req: Request,
@@ -28,15 +27,14 @@ export async function previewImport(
   const jobId = randomUUID();
   const now = Date.now();
   const requestId = (req as Request & { id?: string }).id ?? jobId;
-
   const log = logger.child({ jobId, requestId, file: file.originalname });
+
   log.info(
-    { size: file.size, mimetype: file.mimetype, path: file.path },
-    '[Upload] File received — starting CSV parse'
+    { size: file.size, mimetype: file.mimetype },
+    '[Upload] File received - starting CSV parse'
   );
 
   try {
-    // ── Create initial job record ────────────────────────────────────────────
     await jobRepository.create({
       id: jobId,
       status: JobStatus.PARSING,
@@ -59,14 +57,12 @@ export async function previewImport(
       updatedAt: now,
     });
 
-    // ── Stream-parse the CSV ─────────────────────────────────────────────────
-    const parsed = await parseCsvFile({
-      filePath: file.path,
+    const parsed = await parseCsvBuffer({
+      fileBuffer: file.buffer,
       originalName: file.originalname,
       jobId,
     });
 
-    // ── Suggest CRM field mappings using Field Mapping Agent ─────────────────
     const mappingSuggestions = await suggestFieldMappings(
       parsed.headers,
       parsed.preview.slice(0, 5)
@@ -89,14 +85,13 @@ export async function previewImport(
       };
     }
 
-    // ── Update job with real row count and suggestions ───────────────────────
     await jobRepository.update(jobId, {
       status: JobStatus.QUEUED,
       totalRows: parsed.totalRows,
       headers: parsed.headers,
       previewRows: parsed.preview,
       fieldMappings: initialMappings as any,
-      filePath: file.path,
+      parsedRows: parsed.rows,
       delimiter: parsed.delimiter,
     });
 
@@ -107,14 +102,10 @@ export async function previewImport(
         skippedRows: parsed.skippedRows,
         previewRows: parsed.preview.length,
         delimiter: parsed.delimiter,
-        suggestedMappingsCount: mappingSuggestions.mappings.filter(m => m.crmField).length,
+        suggestedMappingsCount: mappingSuggestions.mappings.filter((m) => m.crmField).length,
       },
       '[Upload] CSV parsed and mapping suggestions completed successfully'
     );
-
-    // ── Cleanup uploaded file (data now in memory for preview) ───────────────
-    // Keep file on disk for the actual processing job — cleaned up after job completes
-    // fs.unlinkSync(file.path); // ← uncomment if you want immediate cleanup
 
     res.json({
       jobId,
@@ -129,12 +120,6 @@ export async function previewImport(
     });
   } catch (error) {
     log.error({ err: (error as Error).message }, '[Upload] CSV parsing failed');
-
-    // Clean up the failed upload
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
-    }
-
     await jobRepository.delete(jobId);
     next(createError((error as Error).message, 422, 'PARSE_ERROR'));
   }
@@ -161,10 +146,13 @@ export async function startImport(
 
     const job = await jobRepository.findById(jobId);
     if (!job) {
-      throw createError('Job not found — upload the file again', 404, 'JOB_NOT_FOUND');
+      throw createError('Job not found - upload the file again', 404, 'JOB_NOT_FOUND');
     }
 
-    // Build mapping map
+    if (!job.parsedRows) {
+      throw createError('Parsed CSV data is no longer available - upload the file again', 410, 'JOB_DATA_EXPIRED');
+    }
+
     const mappingMap: Record<
       string,
       { csvColumn: string; crmField: string | null; confidence: { score: number; level: string; reason: string } }
@@ -183,17 +171,16 @@ export async function startImport(
       fieldMappings: mappingMap as never,
     });
 
-    // Start pipeline execution in background
     await jobOrchestrator.startJob(
       jobId,
-      job.filePath!,
+      job.parsedRows,
       mappingMap as never,
       job.delimiter ?? ','
     );
 
     logger.info(
       { jobId, mappingCount: fieldMappings?.length ?? 0 },
-      '[Import] Job queued — AI processing will start'
+      '[Import] Job queued - AI processing will start'
     );
 
     res.json({

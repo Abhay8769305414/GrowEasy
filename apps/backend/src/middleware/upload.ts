@@ -1,25 +1,10 @@
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import { Request } from 'express';
 import { config } from '../config';
 import { createError } from './errorHandler';
 
-// Ensure upload directory exists
-if (!fs.existsSync(config.uploadDir)) {
-  fs.mkdirSync(config.uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, config.uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const safe = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-    cb(null, safe);
-  },
-});
+const storage = multer.memoryStorage();
 
 /**
  * Validates that the uploaded file is a CSV by extension and MIME type.

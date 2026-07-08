@@ -115,7 +115,6 @@ PORT=4000
 NODE_ENV=development
 GEMINI_API_KEY=your_gemini_api_key_here   # Leave as-is for deterministic mode
 CORS_ORIGIN=http://localhost:3000
-UPLOAD_DIR=./uploads
 MAX_FILE_SIZE_MB=50
 LOG_LEVEL=info
 ```

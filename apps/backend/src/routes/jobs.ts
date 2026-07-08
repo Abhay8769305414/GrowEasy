@@ -7,6 +7,7 @@ import {
   downloadJobJson,
   downloadJobCsv,
 } from '../controllers/jobController';
+import { downloadRateLimit } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -32,13 +33,13 @@ router.get('/:id/result', getJobResult);
  * GET /api/jobs/:id/download/json
  * Download clean records as JSON.
  */
-router.get('/:id/download/json', downloadJobJson);
+router.get('/:id/download/json', downloadRateLimit, downloadJobJson);
 
 /**
  * GET /api/jobs/:id/download/csv
  * Download clean records as CSV.
  */
-router.get('/:id/download/csv', downloadJobCsv);
+router.get('/:id/download/csv', downloadRateLimit, downloadJobCsv);
 
 /**
  * DELETE /api/jobs/:id

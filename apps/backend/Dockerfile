@@ -31,9 +31,6 @@ COPY --from=builder /app/apps/backend/package.json ./apps/backend/package.json
 
 RUN npm ci --workspace=apps/backend --omit=dev --ignore-scripts
 
-# Create uploads directory
-RUN mkdir -p /app/apps/backend/uploads
-
 WORKDIR /app/apps/backend
 
 EXPOSE 4000
